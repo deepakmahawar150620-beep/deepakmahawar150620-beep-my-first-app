@@ -1,37 +1,42 @@
-# app.py
 import streamlit as st
 import pandas as pd
 import altair as alt
 from io import BytesIO
 
-st.title("PSP Excel Uploader & Visualiser")
+st.title("PSP Line Chart from Excel (Stationing vs ON PSP/OFF PSP)")
 
 uploaded = st.file_uploader("Upload Excel (.xlsx)", type=["xlsx"])
-if uploaded is not None:
-    @st.cache_data(hash_funcs={st.runtime.uploaded_file_manager.UploadedFile: lambda x: x.file_id})
-    def load_excel(uploaded_file):
-        data = uploaded_file.getvalue()
-        buffer = BytesIO(data)
+if uploaded:
+    @st.cache_data
+    def load_excel(u):
+        buffer = BytesIO(u.getvalue())
         return pd.read_excel(buffer, engine="openpyxl")
 
     df = load_excel(uploaded)
-    st.write(f"Data loaded: {df.shape[0]} rows × {df.shape[1]} columns")
+    st.write(f"Loaded {df.shape[0]} rows and {df.shape[1]} columns")
 
-    # required columns
-    required = ["Stationing", "ON PSP", "OFF PSP", "LATITUDE", "LONGITUDE"]
+    required = ["Stationing", "ON PSP", "OFF PSP"]
     if all(col in df.columns for col in required):
-        # Line chart
-        df_line = df[required[:-2]].rename(columns={"ON PSP":"ON_PSP","OFF PSP":"OFF_PSP"})
-        df_melt = df_line.melt(id_vars="Stationing", var_name="type", value_name="value")
-        line = alt.Chart(df_melt).mark_line(point=True).encode(
-            x="Stationing:Q", y="value:Q", color="type:N"
-        ).interactive()
-        st.altair_chart(line, use_container_width=True)
+        df_clean = df[required].copy()
+        # Drop rows where Stationing or both PSPs are null
+        df_clean = df_clean.dropna(subset=["Stationing"]).fillna(0)
+        df_clean = df_clean.astype({"Stationing": float, "ON PSP": float, "OFF PSP": float})
 
-        # Map plot
-        df_map = df.rename(columns={"LATITUDE":"lat", "LONGITUDE":"lon"})
-        st.map(df_map[["lat","lon"]].dropna())
+        df_melt = df_clean.melt(
+            id_vars="Stationing",
+            value_vars=["ON PSP", "OFF PSP"],
+            var_name="Type",
+            value_name="Value"
+        )
+
+        st.subheader("Line chart: PSP vs Stationing")
+        chart = alt.Chart(df_melt).mark_line(point=True).encode(
+            x=alt.X("Stationing:Q", title="Stationing (m)"),
+            y=alt.Y("Value:Q", title="PSP (VE V)"),
+            color="Type:N"
+        ).interactive()
+        st.altair_chart(chart, use_container_width=True)
     else:
-        st.error(f"Missing one of these columns: {required}")
+        st.error(f"Excel must include these columns: {required}")
 else:
     st.info("Please upload your Excel file (.xlsx)")
