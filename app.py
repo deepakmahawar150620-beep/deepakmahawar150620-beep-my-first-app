@@ -1,46 +1,33 @@
 import streamlit as st
 import pandas as pd
-import altair as alt
-from io import BytesIO
 
-st.title("PSP Line Chart from Excel")
+st.set_page_config(page_title="✅ GitHub Excel GPS Loader", layout="centered")
+st.title("🧪 Load & Preview Excel from GitHub (with GPS columns)")
 
-uploaded = st.file_uploader("Upload Excel (.xlsx)", type=["xlsx"])
-if uploaded:
-    @st.cache_data
-    def load_excel(u):
-        return pd.read_excel(BytesIO(u.getvalue()), engine="openpyxl")
+@st.cache_data(show_spinner=False)
+def load_github_sheet():
+    url = "https://raw.githubusercontent.com/deepakmahawar150620-beep/SCC_Pawan/main/Pipeline_data.xlsx"
+    # Read all columns without restriction (no usecols)
+    df = pd.read_excel(url, engine="openpyxl", header=0)
+    df.columns = df.columns.astype(str).str.strip()
+    return df
 
-    df = load_excel(uploaded)
-    st.write(f"✅ Loaded {df.shape[0]} rows × {df.shape[1]} columns")
-    st.dataframe(df.head())
+df = load_github_sheet()
 
-    required = ["Stationing (m)", "ON PSP (VE V)", "OFF PSP (VE V)"]
-    if all(col in df.columns for col in required):
-        df_clean = df[required].copy()
-        df_clean = df_clean.dropna(subset=["Stationing (m)"])
-        df_clean = df_clean.fillna(0).astype({
-            "Stationing (m)": float,
-            "ON PSP (VE V)": float,
-            "OFF PSP (VE V)": float
-        })
+st.write("✅ Columns detected in Excel:")
+st.write(df.columns.tolist())
 
-        df_long = df_clean.melt(
-            id_vars="Stationing (m)",
-            value_vars=["ON PSP (VE V)", "OFF PSP (VE V)"],
-            var_name="Type",
-            value_name="Value"
-        )
+st.write("📋 Preview first 5 rows (including GPS columns):")
+st.dataframe(df.head(5), use_container_width=True)
 
-        chart = alt.Chart(df_long).mark_line(point=True).encode(
-            x=alt.X("Stationing (m):Q", title="Stationing (m)"),
-            y=alt.Y("Value:Q", title="PSP (VE V)"),
-            color="Type:N"
-        ).interactive()
-
-        st.subheader("PSP vs Stationing")
-        st.altair_chart(chart, use_container_width=True)
-    else:
-        st.error(f"Excel must contain: {required}")
+if 'LATITUDE' in df.columns and 'LONGITUDE' in df.columns:
+    st.success("✅ Found LATITUDE and LONGITUDE columns.")
 else:
-    st.info("Please upload your Excel file (.xlsx)")
+    st.error("⚠️ LATITUDE or LONGITUDE column missing!")
+
+if 'LATITUDE' in df.columns:
+    st.write("First few LATITUDE values:")
+    st.write(df['LATITUDE'].head(5).tolist())
+if 'LONGITUDE' in df.columns:
+    st.write("First few LONGITUDE values:")
+    st.write(df['LONGITUDE'].head(5).tolist())
